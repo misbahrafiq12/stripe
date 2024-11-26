@@ -1,125 +1,62 @@
-import express from 'express'
-import dotenv from 'dotenv'
-import Stripe from 'stripe'
+import express from 'express';
+import dotenv from 'dotenv';
+import Stripe from 'stripe';
 
-dotenv.config()
+dotenv.config();
+const app = express();
 
-const app = express()
+app.use(express.urlencoded({ extended: true }));
+app.use(express.raw({ type: 'application/json' }));  
 
-app.use(express.json())
-app.use(express.urlencoded({extended:true}))
-app.set('views engine','ejs')
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
-app.get('/',(req,res)=>{
-    res.render('index.ejs')
-})
 
-// app.post('/create-chectout-session',async (req,res)=>{
-//     try{
-// const session = await stripe.checkout.sessions.create({
-//     line_items:[
-//         {
-//            price_data:{
-//                currency:'usd',
-//                product_data:{
-//                    name:"Laptop"
-//                },
-//                unit_amount: 50 * 100
-//            },
-//            quantity:2
-//         },
-//         {
-//             price_data:{
-//                 currency:'usd',
-//                 product_data:{
-//                     name:"T-Shirt"
-//                 },
-//                 unit_amount: 20 * 100
-//             },
-//             quantity:2
-//          }
-//       ],
-//      mode:'payment',
+const endpointSecret = process.env.WEBHOOKS_SECRET;
 
-//      shipping_address_collection:{
-//    allowed_countries:['US','BR']
-//      },
-//       success_url:'http://localhost:3000/success',
-//       cancel_url:'http://localhost:3000/cancel'
+app.get('/', (req, res) => {
+    res.send('Stripe Webhook Test');
+});
+
+
+app.post('/webhook', (req, res) => {
+  const sig = req.headers['stripe-signature'];
+
+  let event;
+
+ 
+  try {
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+  } catch (err) {
+      console.log('Error verifying webhook signature: ', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle the event
+  if (event.type === 'payment_intent.succeeded') {
+      const paymentIntent = event.data.object;
+      console.log('PaymentIntent was successful!');
+      console.log(paymentIntent)
+     
+
    
-// })
-// console.log(session)
-// res.redirect(session.url)
-   
-//     }catch (error) {
-//         res.status(500).json({ error: error.message }); 
-//     }
-// })
+      return res.status(200).send('Payment successful!');
+  }
 
-
-
-// successPage
-
-app.post('/create-checkout-session', async (req, res) => {
-    try {
-        const { products } = req.body;
-
-        if (!products) {
-            return res.status(400).json({ error: "Products required." });
-        }
-
-        const line_items = products.map((product) => {
-            if (!product.name || !product.price || !product.quantity ) {
-                throw new Error("All fields are required: name, price, quantity")
-            }
-
-            return {
-                price_data: {
-                    currency: 'usd',
-                    product_data: {
-                        name: product.name,
-                        images: [product.image],
-                    },
-                    unit_amount: product.price * 100, 
-                },
-                quantity: product.quantity,
-            };
-        });
-
-        const session = await stripe.checkout.sessions.create({
-            line_items,
-            mode: 'payment',
-            // shipping_address_collection: {
-            //     allowed_countries: ['US', 'BR'],
-            // },
-            success_url: 'http://localhost:3000/success?session_id={CHECKOUT_SESSION_ID}', 
-            cancel_url: 'http://localhost:3000/cancel', 
-        });
-
-        console.log("Session created:", session);
-        res.status(201).json({ message: "Checkout session created", url: session.url });
-    } catch (error) {
-        console.error("Server Error:", error.message);
-        res.status(500).json({ error: error.message });
-    }
+ 
+  res.status(200).send('Event received');
 });
 
 
+// app.get('/success', (req, res) => {
+//     res.send('Payment Successful');
+// });
 
+// app.get('/cancel', (req, res) => {
+//     res.send('Payment Cancelled');
+// });
 
-app.get('/success', (req, res) => {
-    res.send('Payment Successful');
+// Start the server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server running on PORT ${PORT}`);
 });
-
-app.get('/cancel', (req, res) => {
-    res.send('Payment Cancelled');
-});
-
-
-
-
-const PORT=process.env.PORT
-app.listen(PORT,()=>{
-    console.log(`Server running on PORT ${PORT}`)
-})
